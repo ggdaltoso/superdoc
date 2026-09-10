@@ -254,6 +254,7 @@ vi.mock('../../Editor', () => {
       return {
         setDocumentMode: vi.fn(),
         setOptions: vi.fn(),
+        attachCollaboration: vi.fn(),
         on: vi.fn(),
         off: vi.fn(),
         destroy: vi.fn(),
@@ -554,6 +555,28 @@ describe('PresentationEditor', () => {
 
       expect(editor.historyCoordinator).toBeNull();
     });
+
+    it('re-registers body history after switching to the collaboration backend', async () => {
+      editor = new PresentationEditor({
+        element: container,
+        documentId: 'unified-history-collaboration-upgrade-doc',
+        content: { type: 'doc', content: [{ type: 'paragraph' }] },
+        mode: 'docx',
+      });
+
+      const coordinator = editor.historyCoordinator;
+      if (!coordinator) throw new Error('Expected unified history to be enabled');
+      const purge = vi.spyOn(coordinator, 'purge');
+      const register = vi.spyOn(coordinator, 'register');
+
+      editor.attachCollaboration({
+        ydoc: {} as never,
+        collaborationProvider: { awareness: null } as never,
+      });
+
+      expect(purge).toHaveBeenCalledWith('body', 'external-invalidation');
+      expect(register).toHaveBeenLastCalledWith(expect.objectContaining({ key: 'body' }));
+    });
   });
 
   describe('document font config', () => {
@@ -817,6 +840,102 @@ describe('PresentationEditor', () => {
       getSelectionUpdateHandler(editorInstance)();
 
       expect(sdtWrapper.classList.contains('ProseMirror-selectednode')).toBe(false);
+    });
+
+    it('marks child fragments as outer wrapper participants without selecting the child SDT', async () => {
+      editor = new PresentationEditor({
+        element: container,
+        documentId: 'outer-sdt-selection-wraps-child-doc',
+      });
+
+      await vi.waitFor(() => expect(mockIncrementalLayout).toHaveBeenCalled());
+
+      const editorInstance = getLastEditorInstance();
+      syncViewState(editorInstance);
+
+      const parentNode = {
+        type: { name: 'structuredContentBlock' },
+        attrs: { id: 'parent-sdt' },
+        nodeSize: 30,
+      };
+      editorInstance.state.selection = makeNodeSelection(90, 120, parentNode);
+
+      const parentWrapper = document.createElement('div');
+      parentWrapper.className = 'superdoc-structured-content-block';
+      parentWrapper.dataset.sdtId = 'parent-sdt';
+      parentWrapper.dataset.pmStart = '90';
+      parentWrapper.dataset.pmEnd = '99';
+
+      const childWrapper = document.createElement('div');
+      childWrapper.className = 'superdoc-structured-content-block';
+      childWrapper.dataset.sdtId = 'child-sdt';
+      childWrapper.dataset.sdtContainerId = 'parent-sdt';
+      childWrapper.dataset.pmStart = '100';
+      childWrapper.dataset.pmEnd = '110';
+
+      container.querySelector('.presentation-editor__pages')?.append(parentWrapper, childWrapper);
+
+      getSelectionUpdateHandler(editorInstance)();
+
+      expect(parentWrapper.classList.contains('ProseMirror-selectednode')).toBe(true);
+      expect(parentWrapper.classList.contains('sdt-container-selected')).toBe(true);
+      expect(parentWrapper.classList.contains('sdt-ancestor-selected')).toBe(false);
+      expect(childWrapper.classList.contains('ProseMirror-selectednode')).toBe(false);
+      expect(childWrapper.classList.contains('sdt-container-selected')).toBe(true);
+      expect(childWrapper.classList.contains('sdt-ancestor-selected')).toBe(false);
+    });
+
+    it('marks the outer wrapper as an ancestor when a nested child SDT is selected', async () => {
+      editor = new PresentationEditor({
+        element: container,
+        documentId: 'inner-sdt-selection-selects-outer-wrapper-doc',
+      });
+
+      await vi.waitFor(() => expect(mockIncrementalLayout).toHaveBeenCalled());
+
+      const editorInstance = getLastEditorInstance();
+      syncViewState(editorInstance);
+
+      const childNode = {
+        type: { name: 'structuredContentBlock' },
+        attrs: { id: 'child-sdt' },
+        nodeSize: 10,
+      };
+      editorInstance.state.selection = makeNodeSelection(100, 110, childNode);
+
+      const parentWrapper = document.createElement('div');
+      parentWrapper.className = 'superdoc-structured-content-block';
+      parentWrapper.dataset.sdtId = 'parent-sdt';
+      parentWrapper.dataset.pmStart = '90';
+      parentWrapper.dataset.pmEnd = '99';
+
+      const childWrapper = document.createElement('div');
+      childWrapper.className = 'superdoc-structured-content-block';
+      childWrapper.dataset.sdtId = 'child-sdt';
+      childWrapper.dataset.sdtContainerId = 'parent-sdt';
+      childWrapper.dataset.pmStart = '100';
+      childWrapper.dataset.pmEnd = '110';
+
+      const siblingWrapper = document.createElement('div');
+      siblingWrapper.className = 'superdoc-structured-content-block';
+      siblingWrapper.dataset.sdtId = 'sibling-sdt';
+      siblingWrapper.dataset.sdtContainerId = 'parent-sdt';
+      siblingWrapper.dataset.pmStart = '111';
+      siblingWrapper.dataset.pmEnd = '120';
+
+      container.querySelector('.presentation-editor__pages')?.append(parentWrapper, childWrapper, siblingWrapper);
+
+      getSelectionUpdateHandler(editorInstance)();
+
+      expect(childWrapper.classList.contains('ProseMirror-selectednode')).toBe(true);
+      expect(childWrapper.classList.contains('sdt-container-selected')).toBe(true);
+      expect(childWrapper.classList.contains('sdt-ancestor-selected')).toBe(false);
+      expect(parentWrapper.classList.contains('ProseMirror-selectednode')).toBe(false);
+      expect(parentWrapper.classList.contains('sdt-container-selected')).toBe(false);
+      expect(parentWrapper.classList.contains('sdt-ancestor-selected')).toBe(true);
+      expect(siblingWrapper.classList.contains('ProseMirror-selectednode')).toBe(false);
+      expect(siblingWrapper.classList.contains('sdt-container-selected')).toBe(false);
+      expect(siblingWrapper.classList.contains('sdt-ancestor-selected')).toBe(false);
     });
   });
 
@@ -3103,6 +3222,28 @@ describe('PresentationEditor', () => {
       const ariaLive = container.querySelector('.presentation-editor__aria-live');
       expect(ariaLive?.textContent).toContain('Editing Header');
       boundingSpy.mockRestore();
+    });
+
+    it('ensureHeaderFooterEditor resolves a variant label to the owning story editor', async () => {
+      mockIncrementalLayout.mockResolvedValueOnce(buildLayoutResult());
+
+      editor = new PresentationEditor({
+        element: container,
+        documentId: 'test-doc',
+      });
+
+      await vi.waitFor(() => expect(mockIncrementalLayout).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const byVariant = editor.ensureHeaderFooterEditor('footer', 'default');
+      const byRefId = editor.ensureHeaderFooterEditor('footer', 'rId-footer-default');
+      const headerByVariant = editor.ensureHeaderFooterEditor('header', 'default');
+      const headerByRefId = editor.ensureHeaderFooterEditor('header', 'rId-header-default');
+
+      expect(byVariant).toBeTruthy();
+      expect(byRefId).toBe(byVariant);
+      expect(headerByVariant).toBeTruthy();
+      expect(headerByRefId).toBe(headerByVariant);
     });
 
     it('does not activate a header story for stale tracked-change navigation', async () => {

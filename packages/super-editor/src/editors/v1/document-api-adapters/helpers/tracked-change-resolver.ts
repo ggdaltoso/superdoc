@@ -14,6 +14,7 @@ import {
 } from '../../extensions/track-changes/constants.js';
 import { getTrackChanges } from '../../extensions/track-changes/trackChangesHelpers/getTrackChanges.js';
 import { enumerateStructuralRowChanges } from '../../extensions/track-changes/trackChangesHelpers/structuralRowChanges.js';
+import { enumeratePprChanges } from '../../extensions/track-changes/trackChangesHelpers/pprChanges.js';
 import {
   projectInternalTrackChangeType,
   type InternalTrackChangeSubtype,
@@ -153,6 +154,94 @@ function getTrackedChangeGroupKey(
 ): string {
   const sourceId = toNonEmptyString(attrs.sourceId);
   return sourceId ? `word:${markType}:${sourceId}` : fallbackId;
+}
+
+/**
+ * Word often splits one logical insertion/deletion into several adjacent
+ * `<w:ins>`/`<w:del>` XML elements purely due to run-boundary mechanics (a
+ * formatting change, a `w:noBreakHyphen` atom starting a new run, ...).
+ * `trackedChangeIdMapper.js`'s same-type chaining already assigns the whole
+ * chain one shared mark `id` on import — but `getTrackedChangeGroupKey`
+ * above keys primarily on `sourceId` (kept distinct per run for export round-
+ * trip fidelity), so the main grouping loop still produces one draft per
+ * original Word run. This pass folds those same-`id`, same-pure-type drafts
+ * back into one entry so the review UI shows one card per Word revision.
+ *
+ * Deliberately excluded: replacement pairs (one pure-insert draft + one
+ * pure-delete draft sharing an `id`) must NOT be merged here — they are
+ * intentionally shown as two cards (delete-strike + insert-underline).
+ * Restricting to homogeneous single-type drafts (`hasInsert` XOR
+ * `hasDelete`, never `hasFormat`) keeps replacement pairs untouched, since
+ * they fall under different chain-key prefixes below. Native marks (no
+ * `sourceId`) are skipped entirely — they already group correctly by `id`
+ * alone via the main loop.
+ *
+ * Trust boundary: this pass does not independently re-verify positional
+ * contiguity via `segmentsByRawId` — it trusts that the importer only ever
+ * assigns a shared `id` to genuinely contiguous/bridged chains. It is a
+ * normalization layer over that upstream decision, not a second adjacency
+ * check; if the importer ever mis-assigns a shared id, this pass will
+ * faithfully widen that mistake in the UI. Note that a mis-assigned shared
+ * `id` can corrupt more than this pass's merge: the main loop above also
+ * sets `commandRawId: id` per draft, and two entries that wrongly share an
+ * `id` (e.g. a same-type chain fused into an unrelated opposite-type
+ * replacement) would carry the same `commandRawId` even without ever
+ * reaching this pass — see `trackedChangeIdMapper.js`'s `canPair`/`canChain`
+ * guards, which exist specifically to prevent that upstream.
+ *
+ * Known limitation (deferred): the merged entry's `attrs`/`wordRevisionIds`
+ * retain only the first-seen draft's `sourceId`, not every original run's.
+ * Doesn't affect the reported bug or export (export reads `sourceId` off
+ * the live PM mark directly, not from this resolver).
+ */
+function coalesceSameTypeImportedChains(
+  byRawId: Map<string, GroupedTrackedChangeDraft>,
+  segmentsByRawId: Map<string, Array<{ from: number; to: number }>>,
+): void {
+  const canonicalKeyByChain = new Map<string, string>();
+
+  for (const [groupKey, draft] of byRawId) {
+    const id = toNonEmptyString(draft.attrs.id);
+    const sourceId = toNonEmptyString(draft.attrs.sourceId);
+    if (!id || !sourceId) continue;
+
+    const isPureInsert = draft.hasInsert && !draft.hasDelete && !draft.hasFormat;
+    const isPureDelete = draft.hasDelete && !draft.hasInsert && !draft.hasFormat;
+    if (!isPureInsert && !isPureDelete) continue;
+
+    const chainKey = `${isPureInsert ? TrackInsertMarkName : TrackDeleteMarkName}:${id}`;
+    const canonicalKey = canonicalKeyByChain.get(chainKey);
+    if (!canonicalKey) {
+      canonicalKeyByChain.set(chainKey, groupKey);
+      continue;
+    }
+    if (canonicalKey === groupKey) continue;
+
+    const canonical = byRawId.get(canonicalKey);
+    if (!canonical) continue;
+
+    canonical.from = Math.min(canonical.from, draft.from);
+    canonical.to = Math.max(canonical.to, draft.to);
+    for (let i = 0; i < draft.excerptParts.length; i += 1) {
+      const range = draft.excerptRanges[i];
+      if (!canonical.excerptRanges.some((counted) => rangesOverlap(counted, range))) {
+        canonical.excerptRanges.push(range);
+        canonical.excerptParts.push(draft.excerptParts[i]);
+      }
+    }
+    if (draft.wordRevisionIds) {
+      for (const key of Object.keys(draft.wordRevisionIds) as Array<keyof TrackChangeWordRevisionIds>) {
+        canonical.wordRevisionIds = mergeWordRevisionId(canonical.wordRevisionIds, key, draft.wordRevisionIds[key]);
+      }
+    }
+
+    const canonicalSegments = segmentsByRawId.get(canonicalKey) ?? [];
+    const draftSegments = segmentsByRawId.get(groupKey) ?? [];
+    segmentsByRawId.set(canonicalKey, canonicalSegments.concat(draftSegments));
+    segmentsByRawId.delete(groupKey);
+
+    byRawId.delete(groupKey);
+  }
 }
 
 function isTrackedMarkName(markType: string | undefined): boolean {
@@ -486,6 +575,8 @@ export function groupTrackedChanges(editor: Editor): GroupedTrackedChange[] {
     }
   }
 
+  coalesceSameTypeImportedChains(byRawId, segmentsByRawId);
+
   const grouped = Array.from(byRawId.values())
     .map(({ excerptParts, excerptRanges: _excerptRanges, ...change }) => {
       const hasWordSourceId = Boolean(toNonEmptyString(change.attrs.sourceId));
@@ -576,6 +667,35 @@ export function groupTrackedChanges(editor: Editor): GroupedTrackedChange[] {
           ? { insert: structural.sourceId }
           : { delete: structural.sourceId }
         : undefined,
+    });
+  }
+
+  // Paragraph-property revisions (w:pPrChange: tracked numbering / alignment)
+  // also live on node attrs, not marks, so they are enumerated separately and
+  // appended as their own decidable formatting changes. The record id
+  // (`paragraphProperties.change.id`) is stored on the node, so it is stable
+  // within the session and doubles as the public id and the command id the
+  // review graph keys by.
+  const pprChanges = enumeratePprChanges(editor.state);
+  for (const ppr of pprChanges) {
+    const excerpt = normalizeExcerpt(editor.state.doc.textBetween(ppr.from, ppr.to, ' ', '￼'));
+    grouped.push({
+      rawId: ppr.id,
+      commandRawId: ppr.id,
+      id: ppr.id,
+      from: ppr.from,
+      to: ppr.to,
+      hasInsert: false,
+      hasDelete: false,
+      hasFormat: true,
+      attrs: {
+        id: ppr.id,
+        author: ppr.author || undefined,
+        authorEmail: ppr.authorEmail || undefined,
+        authorImage: ppr.authorImage || undefined,
+        date: ppr.date || undefined,
+      },
+      excerpt,
     });
   }
 

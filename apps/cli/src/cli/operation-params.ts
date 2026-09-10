@@ -1004,13 +1004,12 @@ const CLI_ONLY_METADATA: Record<CliOnlyOperationId, CliOperationMetadata> = {
           oneOf: [
             {
               type: 'object',
-              description:
-                'WebSocket-based collaboration. `runtime: "v2"` supports only `y-websocket`; `hocuspocus` is legacy v1-only.',
+              description: 'WebSocket-based collaboration via `y-websocket` or `hocuspocus`.',
               properties: {
                 providerType: {
                   type: 'string',
                   enum: ['y-websocket', 'hocuspocus'],
-                  description: 'Collaboration provider. For `runtime: "v2"`, only `y-websocket` is supported.',
+                  description: 'Collaboration provider.',
                 },
                 url: { type: 'string', description: 'WebSocket server URL.' },
                 documentId: {
@@ -1039,13 +1038,12 @@ const CLI_ONLY_METADATA: Record<CliOnlyOperationId, CliOperationMetadata> = {
             },
             {
               type: 'object',
-              description:
-                'Liveblocks collaboration with a public API key. Legacy v1-only; `runtime: "v2"` single-socket collaboration does not support Liveblocks.',
+              description: 'Liveblocks collaboration with a public API key.',
               properties: {
                 providerType: {
                   type: 'string',
                   enum: ['liveblocks'],
-                  description: 'Collaboration provider. Liveblocks is not supported on `runtime: "v2"`.',
+                  description: 'Collaboration provider.',
                 },
                 roomId: { type: 'string', description: 'Liveblocks room identifier.' },
                 publicApiKey: { type: 'string', description: 'Liveblocks public API key (pk_...).' },
@@ -1064,13 +1062,12 @@ const CLI_ONLY_METADATA: Record<CliOnlyOperationId, CliOperationMetadata> = {
             },
             {
               type: 'object',
-              description:
-                'Liveblocks collaboration with a custom auth endpoint. Legacy v1-only; `runtime: "v2"` single-socket collaboration does not support Liveblocks.',
+              description: 'Liveblocks collaboration with a custom auth endpoint.',
               properties: {
                 providerType: {
                   type: 'string',
                   enum: ['liveblocks'],
-                  description: 'Collaboration provider. Liveblocks is not supported on `runtime: "v2"`.',
+                  description: 'Collaboration provider.',
                 },
                 roomId: { type: 'string', description: 'Liveblocks room identifier.' },
                 authEndpoint: { type: 'string', description: 'Absolute URL of the auth endpoint.' },
@@ -1117,14 +1114,6 @@ const CLI_ONLY_METADATA: Record<CliOnlyOperationId, CliOperationMetadata> = {
       { name: 'overrideType', kind: 'flag', flag: 'override-type', type: 'string' },
       { name: 'onMissing', kind: 'flag', flag: 'on-missing', type: 'string' },
       { name: 'bootstrapSettlingMs', kind: 'flag', flag: 'bootstrap-settling-ms', type: 'number' },
-      {
-        name: 'runtime',
-        kind: 'flag',
-        flag: 'runtime',
-        type: 'string',
-        schema: { type: 'string', enum: ['v1', 'v2'] } as CliTypeSpec,
-        description: "Runtime kind: 'v1' (default, legacy editor) or 'v2' (headless SD document session).",
-      },
       USER_NAME_PARAM,
       USER_EMAIL_PARAM,
       PASSWORD_PARAM,
@@ -1199,6 +1188,23 @@ const CLI_ONLY_METADATA: Record<CliOnlyOperationId, CliOperationMetadata> = {
       mutuallyExclusive: [['target', 'ref']],
     },
   },
+  'doc.executeCode': {
+    command: 'execute code',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [
+      SESSION_PARAM,
+      EXPECTED_REVISION_PARAM,
+      {
+        name: 'code',
+        kind: 'flag',
+        type: 'string',
+        description:
+          'JavaScript body run as an async function with `doc` (synchronous Document API — do NOT await) and `console` injected. Omit to pass code on stdin.',
+      },
+    ],
+    constraints: null,
+  },
   'doc.status': {
     command: 'status',
     positionalParams: [],
@@ -1254,6 +1260,137 @@ const CLI_ONLY_METADATA: Record<CliOnlyOperationId, CliOperationMetadata> = {
     positionalParams: ['sessionId'],
     docRequirement: 'none',
     params: [{ name: 'sessionId', kind: 'doc', type: 'string', required: true }],
+    constraints: null,
+  },
+  'doc.preset.list': {
+    command: 'preset list',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [],
+    constraints: null,
+  },
+  'doc.preset.getCatalog': {
+    command: 'preset get-catalog',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [
+      {
+        name: 'preset',
+        kind: 'flag',
+        type: 'string',
+        description: 'Preset id. Defaults to the SDK default preset (legacy).',
+      },
+    ],
+    constraints: null,
+  },
+  'doc.preset.getTools': {
+    command: 'preset get-tools',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [
+      {
+        name: 'provider',
+        kind: 'flag',
+        type: 'string',
+        required: true,
+        schema: {
+          oneOf: [{ const: 'openai' }, { const: 'anthropic' }, { const: 'vercel' }, { const: 'generic' }],
+        } as CliTypeSpec,
+        description: 'Tool provider format: openai | anthropic | vercel | generic.',
+      },
+      {
+        name: 'preset',
+        kind: 'flag',
+        type: 'string',
+        description: 'Preset id. Defaults to the SDK default preset (legacy).',
+      },
+      {
+        name: 'cache',
+        kind: 'flag',
+        type: 'boolean',
+        description: 'Apply provider-specific prompt-cache markers.',
+      },
+      {
+        name: 'excludeActions',
+        kind: 'flag',
+        type: 'string',
+        description:
+          'Comma-separated action names to remove from the advertised action surface (core preset). Unknown names fail.',
+      },
+    ],
+    constraints: null,
+  },
+  'doc.preset.getSystemPrompt': {
+    command: 'preset get-system-prompt',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [
+      {
+        name: 'preset',
+        kind: 'flag',
+        type: 'string',
+        description: 'Preset id. Defaults to the SDK default preset (legacy).',
+      },
+      {
+        name: 'excludeActions',
+        kind: 'flag',
+        type: 'string',
+        description:
+          'Comma-separated action names whose per-action documentation lines are dropped from the prompt (core preset).',
+      },
+    ],
+    constraints: null,
+  },
+  'doc.preset.getMcpPrompt': {
+    command: 'preset get-mcp-prompt',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [
+      {
+        name: 'preset',
+        kind: 'flag',
+        type: 'string',
+        description: 'Preset id. Defaults to the SDK default preset (legacy).',
+      },
+    ],
+    constraints: null,
+  },
+  'doc.preset.dispatch': {
+    command: 'preset dispatch',
+    positionalParams: [],
+    docRequirement: 'none',
+    params: [
+      SESSION_PARAM,
+      EXPECTED_REVISION_PARAM,
+      {
+        name: 'toolName',
+        kind: 'flag',
+        flag: 'tool-name',
+        type: 'string',
+        required: true,
+        description: 'Tool name to dispatch (e.g. superdoc_perform_action, superdoc_inspect, superdoc_execute_code).',
+      },
+      {
+        name: 'args',
+        kind: 'jsonFlag',
+        flag: 'args-json',
+        type: 'json',
+        description: 'Tool arguments as a JSON object (matches the preset tool input schema).',
+      },
+      {
+        name: 'excludeActions',
+        kind: 'flag',
+        type: 'string',
+        description:
+          'Comma-separated action names to refuse at dispatch (defense-in-depth for a narrowed tool surface).',
+      },
+      {
+        name: 'preset',
+        kind: 'flag',
+        type: 'string',
+        description: 'Preset id. Defaults to the SDK default preset (legacy).',
+      },
+    ],
     constraints: null,
   },
 };

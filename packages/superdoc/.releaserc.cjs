@@ -42,15 +42,20 @@ Object.keys(require.cache)
 const branch = process.env.GITHUB_REF_NAME || process.env.CI_COMMIT_BRANCH;
 const isLocalPreview = process.env.SUPERDOC_RELEASE_PREVIEW === '1';
 
+// Tag ownership: `superdoc` on npm is published by two release lines. V2 owns
+// the default channels — `latest` for stable, `next` for previews — and V1 is
+// maintenance-only under `legacy`. V1 must never claim `latest` or `next`:
+// both lines publish the same package name, so a V1 release that claimed a V2
+// channel would silently take it over (last write wins).
+//
+// `main` is deliberately absent. V1 no longer ships prereleases, so there is no
+// branch here that could produce a `next` release. PR previews are unaffected —
+// they publish `pr-<number>` directly through scripts/publish-superdoc.cjs and
+// never run semantic-release.
 const branches = [
   {
     name: 'stable',
-    channel: 'latest', // Only stable gets @latest
-  },
-  {
-    name: 'main',
-    channel: 'next',
-    prerelease: 'next',
+    channel: 'legacy', // V1 maintenance line; V2 owns `latest`
   },
   // Maintenance branches - channel defaults to branch name
   {
@@ -61,17 +66,29 @@ const branches = [
 
 const isPrerelease = branches.some((b) => typeof b === 'object' && b.name === branch && b.prerelease);
 
-// stable -> main syncs (real merges) re-attribute prereleases to PRs already shipped on @latest.
-// Gate per-PR/issue success comments off on prereleases to avoid duplicate "shipped" comments.
-const shouldCommentOnRelease = !isPrerelease;
-// Linear release comments are the shipped-version breadcrumb inside Linear
-// itself, so keep them on for prereleases even while GitHub PR comments stay
-// gated separately.
+// GitHub Releases are stable-only; prerelease tags and package publishing still proceed.
+const shouldPublishGitHubRelease = !isLocalPreview && Boolean(branch) && !isPrerelease;
+// Linear release comments remain the shipped-version breadcrumb, so
+// prereleases link to their Git tags when no GitHub Release exists.
 const shouldCommentOnLinearRelease = true;
 
 // Use AI-powered notes for stable releases, conventional generator for prereleases
 const notesPlugin =
-  isLocalPreview || isPrerelease ? createReleaseNotesGenerator() : ['semantic-release-ai-notes', { style: 'concise' }];
+  isLocalPreview || isPrerelease
+    ? createReleaseNotesGenerator()
+    : [
+        'semantic-release-ai-notes',
+        {
+          style: 'concise',
+          scope: {
+            name: 'SuperDoc',
+            paths: SUPERDOC_PACKAGES,
+            audience: 'Developers embedding the SuperDoc editor in their own applications',
+            instructions:
+              'packages/super-editor, packages/layout-engine, packages/word-layout, and packages/preset-geometry are internal engine packages bundled directly into SuperDoc. Treat their changes as part of the editor itself, not as an external dependency.',
+          },
+        },
+      ];
 
 const config = {
   branches,
@@ -120,13 +137,12 @@ if (!isLocalPreview) {
 }
 
 // GitHub plugin comes last
-if (!isLocalPreview) {
+if (shouldPublishGitHubRelease) {
   config.plugins.push([
     '@semantic-release/github',
     {
       successComment:
-        ':tada: This ${issue.pull_request ? "PR" : "issue"} is included in **superdoc** v${nextRelease.version}\n\nThe release is available on [GitHub release](https://github.com/superdoc-dev/superdoc/releases/tag/${nextRelease.gitTag})',
-      successCommentCondition: shouldCommentOnRelease ? undefined : false,
+        ':tada: This ${issue.pull_request ? "PR" : "issue"} is included in **superdoc** v${nextRelease.version}\n\nThe release is available on [GitHub release](https://github.com/superdoc/docx-editor/releases/tag/${nextRelease.gitTag})',
     },
   ]);
 }

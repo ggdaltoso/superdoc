@@ -1,0 +1,47 @@
+name: "SuperDoc: Dispatch OSS Push To Orbit"
+
+on:
+  push:
+    # This copy lives on the V1 maintenance branch; main has its own dispatcher.
+    branches: [v1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superdoc-oss-push-orbit-dispatch-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch OSS push backflow to Orbit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create Orbit dispatch App token
+        id: orbit-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.ORBIT_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.ORBIT_DISPATCH_APP_PRIVATE_KEY }}
+          owner: superdoc
+          repositories: orbit
+
+      - name: Dispatch OSS backflow to Orbit
+        env:
+          AFTER_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ steps.orbit-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/superdoc/orbit/dispatches \
+            -f event_type=superdoc-oss-backflow \
+            -F client_payload[repository]="$GITHUB_REPOSITORY" \
+            -F client_payload[ref]="$GITHUB_REF_NAME" \
+            -F client_payload[after]="$AFTER_SHA"
+
+          {
+            echo "### Orbit OSS push backflow dispatched"
+            echo ""
+            echo "- ref: \`$GITHUB_REF_NAME\`"
+            echo "- after: \`$AFTER_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"

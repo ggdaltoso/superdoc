@@ -4602,7 +4602,7 @@ export const MCP_TOOL_CATALOG = {
     },
     {
       "toolName": "superdoc_comment",
-      "description": "Manage document comment threads: create, read, update, and delete. To create a comment, first use superdoc_search to find the target text, then pass action \"create\" with the comment text and a target built from items[0].blocks. For a single-block match use {kind:\"text\", blockId: items[0].blocks[0].blockId, range: items[0].blocks[0].range}. For a cross-block match use {kind:\"text\", segments: items[0].blocks.map(b => ({blockId: b.blockId, range: b.range}))}. Do NOT use items[0].highlightRange (snippet-relative, not block-relative) or items[0].target (a SelectionTarget, not accepted by comments.create). For threaded replies, pass \"parentId\" with the parent comment ID. Action \"list\" returns all comments with optional pagination (limit, offset) and filtering (includeResolved:true to include resolved). Action \"get\" retrieves a single comment by ID. Action \"update\" changes comment text, re-anchors the thread, or changes status to \"resolved\". The legacy `isInternal` field remains in schema for v1 compatibility but the v2 surface rejects it with `CAPABILITY_UNAVAILABLE`. Action \"delete\" removes a comment or reply by ID. Do NOT pass \"ref\", \"id\", or \"parentId\" when creating a new top-level comment; only \"action\", \"text\", and \"target\" are needed.\n\nEXAMPLES:\n  1. {\"action\":\"create\",\"text\":\"Please review this section.\",\"target\":{\"kind\":\"text\",\"blockId\":\"<blockId>\",\"range\":{\"start\":5,\"end\":25}}}\n  2. {\"action\":\"list\",\"limit\":20,\"offset\":0}\n  3. {\"action\":\"update\",\"id\":\"<commentId>\",\"status\":\"resolved\"}\n  4. {\"action\":\"delete\",\"id\":\"<commentId>\"}",
+      "description": "Manage document comment threads: create, read, update, and delete. To create a comment, first use superdoc_search to find the target text, then pass action \"create\" with the comment text and a target built from items[0].blocks. For a single-block match use {kind:\"text\", blockId: items[0].blocks[0].blockId, range: items[0].blocks[0].range}. For a cross-block match use {kind:\"text\", segments: items[0].blocks.map(b => ({blockId: b.blockId, range: b.range}))}. Do NOT use items[0].highlightRange (snippet-relative, not block-relative) or items[0].target (a SelectionTarget, not accepted by comments.create). For threaded replies, pass \"parentId\" with the parent comment ID. Action \"list\" returns all comments with optional pagination (limit, offset) and filtering (includeResolved:true to include resolved). Action \"get\" retrieves a single comment by ID. Action \"update\" changes comment text, re-anchors the thread, or changes status to \"resolved\". The legacy `isInternal` field remains in schema for v1 compatibility but is not supported for new comment patch behavior. Action \"delete\" removes a comment or reply by ID. Do NOT pass \"ref\", \"id\", or \"parentId\" when creating a new top-level comment; only \"action\", \"text\", and \"target\" are needed.\n\nEXAMPLES:\n  1. {\"action\":\"create\",\"text\":\"Please review this section.\",\"target\":{\"kind\":\"text\",\"blockId\":\"<blockId>\",\"range\":{\"start\":5,\"end\":25}}}\n  2. {\"action\":\"list\",\"limit\":20,\"offset\":0}\n  3. {\"action\":\"update\",\"id\":\"<commentId>\",\"status\":\"resolved\"}\n  4. {\"action\":\"delete\",\"id\":\"<commentId>\"}",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4744,7 +4744,7 @@ export const MCP_TOOL_CATALOG = {
           },
           "isInternal": {
             "type": "boolean",
-            "description": "Legacy v1/document-api compatibility field. Not a supported v2 behavior. V2 adapters MUST reject a `comments.patch` request containing `isInternal` with `CAPABILITY_UNAVAILABLE` (kernel reason `internal-comments-unsupported`). The field is preserved in the schema only so v1 callers keep their input shape (`comments-spec.md` §7, §14.6). Only for action 'update'. Omit for other actions."
+            "description": "Legacy v1/document-api compatibility field. Not supported for new comment patch behavior. A `comments.patch` request containing `isInternal` fails with `CAPABILITY_UNAVAILABLE` (kernel reason `internal-comments-unsupported`). The field is preserved in the schema only so v1 callers keep their input shape (`comments-spec.md` §7, §14.6). Only for action 'update'. Omit for other actions."
           },
           "includeResolved": {
             "type": "boolean",
@@ -4891,6 +4891,13 @@ export const MCP_TOOL_CATALOG = {
                       "destination"
                     ],
                     "description": "Optional move pairing assertion. 'pair' requires the resolved tracked change to be a paired move; 'source' / 'destination' further narrow to a specific half. When the assertion does not hold the decide adapter fails closed."
+                  },
+                  "side": {
+                    "enum": [
+                      "inserted",
+                      "deleted"
+                    ],
+                    "description": "Optional replacement side. When the id resolves to a paired replacement, decides only the 'inserted' or 'deleted' half, leaving the other half as a standalone pending change."
                   }
                 },
                 "additionalProperties": false,
@@ -5089,6 +5096,13 @@ export const MCP_TOOL_CATALOG = {
                       "destination"
                     ],
                     "description": "Optional move pairing assertion. 'pair' requires the resolved tracked change to be a paired move; 'source' / 'destination' further narrow to a specific half. When the assertion does not hold the decide adapter fails closed."
+                  },
+                  "side": {
+                    "enum": [
+                      "inserted",
+                      "deleted"
+                    ],
+                    "description": "Optional replacement side. When the id resolves to a paired replacement, decides only the 'inserted' or 'deleted' half."
                   }
                 },
                 "additionalProperties": false,
@@ -7435,7 +7449,6 @@ export const MCP_TOOL_CATALOG = {
               "insert_column",
               "insert_row",
               "merge_cells",
-              "move_row",
               "set_borders",
               "set_cell",
               "set_cell_text",
@@ -7448,7 +7461,7 @@ export const MCP_TOOL_CATALOG = {
               "set_style_options",
               "unmerge_cells"
             ],
-            "description": "The action to perform. One of: delete, delete_column, delete_row, insert_column, insert_row, merge_cells, move_row, set_borders, set_cell, set_cell_text, set_column, set_layout, set_options, set_row, set_row_options, set_shading, set_style_options, unmerge_cells."
+            "description": "The action to perform. One of: delete, delete_column, delete_row, insert_column, insert_row, merge_cells, set_borders, set_cell, set_cell_text, set_column, set_layout, set_options, set_row, set_row_options, set_shading, set_style_options, unmerge_cells."
           },
           "force": {
             "type": "boolean",
@@ -7497,33 +7510,19 @@ export const MCP_TOOL_CATALOG = {
                                                                   {
                                                                     "oneOf": [
                                                                       {
+                                                                        "$ref": "#/$defs/TableAddress"
+                                                                      },
+                                                                      {
                                                                         "oneOf": [
-                                                                          {
-                                                                            "$ref": "#/$defs/TableAddress"
-                                                                          },
                                                                           {
                                                                             "oneOf": [
                                                                               {
-                                                                                "oneOf": [
-                                                                                  {
-                                                                                    "$ref": "#/$defs/TableRowAddress"
-                                                                                  },
-                                                                                  {
-                                                                                    "$ref": "#/$defs/TableAddress"
-                                                                                  }
-                                                                                ]
+                                                                                "$ref": "#/$defs/TableRowAddress"
                                                                               },
                                                                               {
                                                                                 "$ref": "#/$defs/TableAddress"
                                                                               }
                                                                             ]
-                                                                          }
-                                                                        ]
-                                                                      },
-                                                                      {
-                                                                        "oneOf": [
-                                                                          {
-                                                                            "$ref": "#/$defs/TableRowAddress"
                                                                           },
                                                                           {
                                                                             "$ref": "#/$defs/TableAddress"
@@ -7699,142 +7698,7 @@ export const MCP_TOOL_CATALOG = {
           "rowIndex": {
             "type": "integer",
             "minimum": 0,
-            "description": "Only for actions 'insert_row', 'delete_row', 'move_row', 'set_row', 'set_row_options', 'unmerge_cells', 'set_cell_text'. Omit for other actions."
-          },
-          "destination": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "first",
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "last",
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "before",
-                    "type": "string"
-                  },
-                  "rowIndex": {
-                    "type": "integer",
-                    "minimum": 0
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind",
-                  "rowIndex"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "after",
-                    "type": "string"
-                  },
-                  "rowIndex": {
-                    "type": "integer",
-                    "minimum": 0
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind",
-                  "rowIndex"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "before",
-                    "type": "string"
-                  },
-                  "target": {
-                    "$ref": "#/$defs/TableRowAddress"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind",
-                  "target"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "after",
-                    "type": "string"
-                  },
-                  "target": {
-                    "$ref": "#/$defs/TableRowAddress"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind",
-                  "target"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "before",
-                    "type": "string"
-                  },
-                  "nodeId": {
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind",
-                  "nodeId"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "after",
-                    "type": "string"
-                  },
-                  "nodeId": {
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "kind",
-                  "nodeId"
-                ]
-              }
-            ],
-            "description": "Required for action 'move_row'."
+            "description": "Only for actions 'insert_row', 'delete_row', 'set_row', 'set_row_options', 'unmerge_cells', 'set_cell_text'. Omit for other actions."
           },
           "heightPt": {
             "type": "number",
@@ -8374,26 +8238,6 @@ export const MCP_TOOL_CATALOG = {
             [
               "nodeId",
               "rowIndex"
-            ]
-          ]
-        },
-        {
-          "operationId": "doc.tables.moveRow",
-          "intentAction": "move_row",
-          "requiredOneOf": [
-            [
-              "target",
-              "destination"
-            ],
-            [
-              "target",
-              "rowIndex",
-              "destination"
-            ],
-            [
-              "nodeId",
-              "rowIndex",
-              "destination"
             ]
           ]
         },

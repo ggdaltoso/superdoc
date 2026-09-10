@@ -89,7 +89,7 @@ test('collectIssueIdsFromCommits ignores generated release commits with old note
 });
 
 
-test('formatComment keeps the existing release comment template behavior', () => {
+test('formatComment links prerelease comments to the Git tag', () => {
   assert.equal(
     formatComment(
       'shipped in {package} {releaseLink} {channel}',
@@ -97,9 +97,23 @@ test('formatComment keeps the existing release comment template behavior', () =>
       'next',
       'superdoc',
       'v1.2.3',
-      'https://github.com/superdoc-dev/superdoc.git',
+      'https://github.com/superdoc/docx-editor.git',
     ),
-    'shipped in **superdoc** [1.2.3](https://github.com/superdoc-dev/superdoc/releases/tag/v1.2.3) (next channel)',
+    'shipped in **superdoc** [1.2.3](https://github.com/superdoc/docx-editor/tree/v1.2.3) (next channel)',
+  );
+});
+
+test('formatComment links stable comments to the GitHub release', () => {
+  assert.equal(
+    formatComment(
+      'shipped in {package} {releaseLink} {channel}',
+      '1.2.3',
+      'latest',
+      'superdoc',
+      'v1.2.3',
+      'https://github.com/superdoc/docx-editor.git',
+    ),
+    'shipped in **superdoc** [1.2.3](https://github.com/superdoc/docx-editor/releases/tag/v1.2.3) (latest channel)',
   );
 });
 
@@ -159,7 +173,7 @@ test('success does not call issueUpdate with an empty label set when issue label
         cwd: process.cwd(),
         logger,
         nextRelease: { version: '1.2.3', type: 'patch', gitTag: 'v1.2.3' },
-        options: { repositoryUrl: 'https://github.com/superdoc-dev/superdoc.git' },
+        options: { repositoryUrl: 'https://github.com/superdoc/docx-editor.git' },
       },
     );
   } finally {
@@ -218,7 +232,7 @@ test('success retries label lookup when concurrent label creation wins the race'
         cwd: process.cwd(),
         logger,
         nextRelease: { version: '1.2.3', type: 'patch', gitTag: 'v1.2.3' },
-        options: { repositoryUrl: 'https://github.com/superdoc-dev/superdoc.git' },
+        options: { repositoryUrl: 'https://github.com/superdoc/docx-editor.git' },
       },
     );
   } finally {

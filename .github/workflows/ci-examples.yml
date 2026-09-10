@@ -169,7 +169,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        example: [superdoc-yjs, hocuspocus, liveblocks]
+        example: ${{ fromJSON(vars.VITE_LIVEBLOCKS_PUBLIC_KEY == '' && '["superdoc-yjs","hocuspocus"]' || '["superdoc-yjs","hocuspocus","liveblocks"]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -199,7 +199,7 @@ jobs:
       - name: Create .env for cloud providers
         working-directory: examples/editor/collaboration/providers/${{ matrix.example }}
         env:
-          VITE_LIVEBLOCKS_PUBLIC_KEY: ${{ secrets.VITE_LIVEBLOCKS_PUBLIC_KEY }}
+          VITE_LIVEBLOCKS_PUBLIC_KEY: ${{ vars.VITE_LIVEBLOCKS_PUBLIC_KEY }}
         run: |
           if [ "${{ matrix.example }}" = "liveblocks" ]; then
             case "$VITE_LIVEBLOCKS_PUBLIC_KEY" in

@@ -112,6 +112,10 @@ type ParseTableCellArgs = {
   defaultCellPadding?: BoxSpacing;
   tableProperties?: TableProperties;
   rowCnfStyle?: Record<string, unknown> | null;
+  /** Grid placement for conditional style regions (SD-3028 G7). */
+  gridPlacement?: GridCellPlacement | null;
+  /** Total grid columns in the table (w:tblGrid length). */
+  numGridCols?: number;
 };
 
 type ParseTableRowArgs = {
@@ -122,6 +126,68 @@ type ParseTableRowArgs = {
   defaultCellPadding?: BoxSpacing;
   /** Table style to pass to paragraph converter for style cascade */
   tableProperties?: TableProperties;
+  /** Per-content-index grid placements for this row (SD-3028 G7). */
+  cellGridPlacements?: Array<GridCellPlacement | null>;
+  /** Total grid columns in the table (w:tblGrid length). */
+  numGridCols?: number;
+};
+
+/** Grid column placement of one display cell (SD-3028 G7). */
+type GridCellPlacement = {
+  gridColumnStart: number;
+  gridColumnSpan: number;
+};
+
+/**
+ * Place a row's cells on the table grid (SD-3028 G7).
+ *
+ * Word's firstCol/lastCol/banding conditional regions follow GRID columns, but
+ * the PM document only exposes display cells: vMerge continuations are merged
+ * into rowspans on earlier rows and gridBefore/gridAfter become placeholder
+ * cells. This walks the row's content with a column cursor, skipping columns
+ * occupied by rowspans from above, so every display cell knows its grid start.
+ *
+ * Mirrors the measuring normalizer's activeRowSpans idiom: `activeRowSpans[col]`
+ * counts how many upcoming rows column `col` is still covered by.
+ *
+ * @param rowNode - The PM table row node.
+ * @param activeRowSpans - Occupied-column counters carried from previous rows.
+ * @returns Placements aligned to `rowNode.content` indices plus the counters
+ *   for the next row.
+ */
+const placeRowCellsOnGrid = (
+  rowNode: PMNode,
+  activeRowSpans: number[],
+): { placements: Array<GridCellPlacement | null>; nextActiveRowSpans: number[] } => {
+  const placements: Array<GridCellPlacement | null> = [];
+  const nextActiveRowSpans = activeRowSpans.map((count) => Math.max(0, count - 1));
+  let column = 0;
+
+  const cellSpan = (cellNode: PMNode): number => {
+    const colspan = cellNode.attrs?.colspan;
+    if (typeof colspan === 'number' && colspan > 0) return colspan;
+    const colwidth = cellNode.attrs?.colwidth;
+    return Array.isArray(colwidth) && colwidth.length > 0 ? colwidth.length : 1;
+  };
+
+  for (const cellNode of Array.isArray(rowNode.content) ? rowNode.content : []) {
+    if (!isTableCellNode(cellNode)) {
+      placements.push(null);
+      continue;
+    }
+    while ((activeRowSpans[column] ?? 0) > 0) column += 1;
+    const span = cellSpan(cellNode);
+    placements.push({ gridColumnStart: column, gridColumnSpan: span });
+    const rowspan = typeof cellNode.attrs?.rowspan === 'number' ? cellNode.attrs.rowspan : 1;
+    if (rowspan > 1) {
+      for (let covered = column; covered < column + span; covered += 1) {
+        nextActiveRowSpans[covered] = Math.max(nextActiveRowSpans[covered] ?? 0, rowspan - 1);
+      }
+    }
+    column += span;
+  }
+
+  return { placements, nextActiveRowSpans };
 };
 
 const isTableRowNode = (node: PMNode): boolean => node.type === 'tableRow' || node.type === 'table_row';
@@ -161,10 +227,40 @@ function normalizeLegacyBorderStyle(value: string | undefined): string {
       return 'dotDash';
     case 'dotdotdash':
       return 'dotDotDash';
+    case 'dashsmallgap':
+      return 'dashSmallGap';
+    case 'thinthicksmallgap':
+      return 'thinThickSmallGap';
+    case 'thickthinsmallgap':
+      return 'thickThinSmallGap';
+    case 'thinthickthinsmallgap':
+      return 'thinThickThinSmallGap';
+    case 'thinthickmediumgap':
+      return 'thinThickMediumGap';
+    case 'thickthinmediumgap':
+      return 'thickThinMediumGap';
+    case 'thinthickthinmediumgap':
+      return 'thinThickThinMediumGap';
+    case 'thinthicklargegap':
+      return 'thinThickLargeGap';
+    case 'thickthinlargegap':
+      return 'thickThinLargeGap';
+    case 'thinthickthinlargegap':
+      return 'thinThickThinLargeGap';
     case 'wave':
       return 'wave';
     case 'doublewave':
       return 'doubleWave';
+    case 'dashdotstroked':
+      return 'dashDotStroked';
+    case 'threedemboss':
+      return 'threeDEmboss';
+    case 'threedengrave':
+      return 'threeDEngrave';
+    case 'outset':
+      return 'outset';
+    case 'inset':
+      return 'inset';
     case 'single':
     default:
       return 'single';
@@ -286,7 +382,22 @@ const parseTableCell = (args: ParseTableCellArgs): TableCell | null => {
   const rowCnfStyle = args.rowCnfStyle ?? null;
   const cellCnfStyle = (cellNode.attrs?.tableCellProperties as Record<string, unknown> | undefined)?.cnfStyle ?? null;
   const tableInfo: TableInfo | undefined = tableProperties
-    ? { tableProperties, rowIndex, cellIndex, numCells, numRows, rowCnfStyle, cellCnfStyle }
+    ? {
+        tableProperties,
+        rowIndex,
+        cellIndex,
+        numCells,
+        numRows,
+        rowCnfStyle,
+        cellCnfStyle,
+        ...(args.gridPlacement != null && args.numGridCols != null
+          ? {
+              gridColumnStart: args.gridPlacement.gridColumnStart,
+              gridColumnSpan: args.gridPlacement.gridColumnSpan,
+              numGridCols: args.numGridCols,
+            }
+          : {}),
+      }
     : undefined;
 
   // Resolve table cell properties from the style cascade (wholeTable → bands → conditional → inline)
@@ -667,7 +778,8 @@ const parseTableCell = (args: ParseTableCellArgs): TableCell | null => {
  * @param args.context - Parser dependencies (block ID generator, converters, style context)
  * @param args.defaultCellPadding - Optional default padding from table style to pass to cells
  * @param args.tableStyleId - Optional table style ID for paragraph style cascade in cells
- * @returns TableRow object with cells and attributes, or null if the row contains no valid cells
+ * @returns TableRow object with cells and attributes, including structurally empty rowspan continuation rows,
+ *   or null when the node is not a table row
  *
  * @example
  * // Row with cells
@@ -679,13 +791,14 @@ const parseTableCell = (args: ParseTableCellArgs): TableCell | null => {
  * // Returns: { id: 'row-0', cells: [...], attrs: {...} }
  *
  * @example
- * // Row with no valid cells returns null
+ * // A structurally empty row is preserved. ProseMirror emits these rows when
+ * // a full-width cell spans vertically across them.
  * parseTableRow({
  *   rowNode: { type: 'tableRow', content: [] },
  *   rowIndex: 0,
  *   context: parserDeps,
  * });
- * // Returns: null
+ * // Returns: { id: 'row-0', cells: [] }
  */
 /**
  * Builds shared {@link TrackedChangeMeta} for a structural row-level tracked
@@ -731,15 +844,16 @@ const buildRowTrackedChangeMeta = (rowNode: PMNode, storyKey?: string): TrackedC
 
 const parseTableRow = (args: ParseTableRowArgs): TableRow | null => {
   const { rowNode, rowIndex, context, defaultCellPadding, tableProperties, numRows } = args;
-  if (!isTableRowNode(rowNode) || !Array.isArray(rowNode.content)) {
+  if (!isTableRowNode(rowNode)) {
     return null;
   }
 
+  const rowContent = Array.isArray(rowNode.content) ? rowNode.content : [];
   const cells: TableCell[] = [];
   const rowCnfStyle = (rowNode.attrs?.tableRowProperties as Record<string, unknown> | undefined)?.cnfStyle as
     | Record<string, unknown>
     | undefined;
-  rowNode.content.forEach((cellNode, cellIndex) => {
+  rowContent.forEach((cellNode, cellIndex) => {
     if (isTableCellNode(cellNode) && isTableSkipPlaceholderCell(cellNode)) {
       return;
     }
@@ -751,16 +865,16 @@ const parseTableRow = (args: ParseTableRowArgs): TableRow | null => {
       context,
       defaultCellPadding,
       tableProperties,
-      numCells: rowNode?.content?.length || 1,
+      numCells: rowContent.length || 1,
       numRows,
       rowCnfStyle,
+      gridPlacement: args.cellGridPlacements?.[cellIndex] ?? null,
+      numGridCols: args.numGridCols,
     });
     if (parsedCell) {
       cells.push(parsedCell);
     }
   });
-
-  if (cells.length === 0) return null;
 
   const rowProps = rowNode.attrs?.tableRowProperties;
   const rowHeight = normalizeRowHeight(rowProps as Record<string, unknown> | undefined);
@@ -1017,7 +1131,15 @@ export function tableNodeToBlock(
       : undefined;
 
   const rows: TableRow[] = [];
+  // Grid placements for conditional style regions (SD-3028 G7): Word's
+  // firstCol/lastCol/banding follow grid columns, so each display cell needs
+  // its grid start across rowspans, spans, and placeholder columns.
+  const grid = node.attrs?.grid;
+  const numGridCols = Array.isArray(grid) && grid.length > 0 ? grid.length : undefined;
+  let activeRowSpans: number[] = [];
   node.content.forEach((rowNode, rowIndex) => {
+    const { placements, nextActiveRowSpans } = placeRowCellsOnGrid(rowNode, activeRowSpans);
+    activeRowSpans = nextActiveRowSpans;
     const parsedRow = parseTableRow({
       rowNode,
       rowIndex,
@@ -1025,6 +1147,8 @@ export function tableNodeToBlock(
       context: parserDeps,
       defaultCellPadding,
       tableProperties: tablePropertiesForCascade,
+      cellGridPlacements: placements,
+      numGridCols,
     });
     if (parsedRow) {
       // Drop a tracked row from the layout entirely (not just CSS-hide it in the
@@ -1039,7 +1163,7 @@ export function tableNodeToBlock(
     }
   });
 
-  if (rows.length === 0) return null;
+  if (rows.every((row) => row.cells.length === 0)) return null;
 
   const tableAttrs: Record<string, unknown> = {};
 

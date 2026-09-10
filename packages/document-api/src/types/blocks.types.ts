@@ -1,12 +1,5 @@
 import type { BlockNodeType, BlockNodeAddress, DeletableBlockNodeAddress } from './base.js';
-import type {
-  AffectedRef,
-  AffectedRefRemapping,
-  Receipt,
-  ReceiptFailure,
-  ReceiptInsert,
-  TextRangeShift,
-} from './receipt.js';
+import type { AffectedRef, Receipt, ReceiptInsert, TextRangeShift } from './receipt.js';
 import type { StoryLocator } from './story.types.js';
 import type { ParagraphNumbering } from './paragraph.types.js';
 // ---------------------------------------------------------------------------
@@ -17,14 +10,21 @@ export interface BlockListEntry {
   nodeId: string;
   nodeType: BlockNodeType;
   textPreview: string | null;
-  /** Full flattened block text when requested via BlocksListInput.includeText. */
+  /**
+   * Visible flattened block text when requested via BlocksListInput.includeText.
+   * Uses the same text model the plan engine resolves offsets against: pending
+   * tracked deletions are excluded, and inline leaf atoms (images, tabs)
+   * contribute one character (their leaf text or U+FFFC), so `text.length`
+   * always matches the encoded `ref` range. A block whose content is entirely
+   * tracked-deleted reads as "" (and reports isEmpty: true with no ref).
+   */
   text?: string | null;
   isEmpty: boolean;
   /** Named paragraph style ID (e.g. 'Normal', 'Heading1'). */
   styleId?: string | null;
-  /** Font family from the block's first text run. */
+  /** Font family from the block's first visible text run (tracked-deleted runs are skipped). */
   fontFamily?: string;
-  /** Font size from the block's first text run. */
+  /** Font size from the block's first visible text run (tracked-deleted runs are skipped). */
   fontSize?: number;
   /** True if the block's text is bold. */
   bold?: boolean;
@@ -34,8 +34,22 @@ export interface BlockListEntry {
   color?: string;
   /** Paragraph alignment. */
   alignment?: string;
+  /** Direct paragraph indentation (twips), when set on the block. */
+  indent?: { left?: number; right?: number; firstLine?: number; hanging?: number };
   /** Heading level (1-6). Only for headings. */
   headingLevel?: number;
+  /**
+   * Computed numbering for blocks that participate in a numbering scheme.
+   * Present for numbered list items AND numbered headings/paragraphs (legal
+   * clause numbering like "2.3." usually lives on heading-styled paragraphs,
+   * not list nodes). `marker` is the rendered label (e.g. "2.3."), `path` the
+   * numeric path (e.g. [2, 3]), `kind` the numbering type (decimal, bullet…).
+   */
+  numbering?: {
+    marker: string | null;
+    path: number[] | null;
+    kind: string | null;
+  } | null;
   /**
    * Numbering reference (`numId` + `level`) for numbered blocks, sourced from the
    * block's direct numbering properties (`w:numPr`). Present for numbered
@@ -91,85 +105,6 @@ export interface DeletedBlockSummary {
   nodeType: string;
   textPreview: string | null;
 }
-// ---------------------------------------------------------------------------
-// Structural block / paragraph operations.
-//
-// `blocks.split`, `blocks.merge`, and `blocks.move` cover the structural
-// editing surface that `create.paragraph` and `blocks.delete` cannot
-// express. Each operation accepts a `BlockNodeAddress` (or a v2 stable ref
-// where applicable) and returns a structured receipt that mirrors the
-// kernel's semantic delta.
-// ---------------------------------------------------------------------------
-export interface BlocksSplitInput {
-  /** Paragraph-shaped block to split. Only `paragraph` / `heading` / `listItem` are supported. */
-  target: BlockNodeAddress;
-  /** Char offset inside the target paragraph's visible text where the split occurs. */
-  offset: number;
-}
-export interface BlocksSplitSuccessResult {
-  success: true;
-  /** Address of the new paragraph created by the split (the tail). */
-  inserted: BlockNodeAddress;
-  trackedChangeRefs?: ReceiptInsert[];
-  remappedRefs?: AffectedRefRemapping[];
-  affectedStories?: StoryLocator[];
-  textRangeShifts?: TextRangeShift[];
-  txId?: string;
-}
-export interface BlocksSplitFailureResult {
-  success: false;
-  failure: ReceiptFailure;
-}
-export type BlocksSplitResult = BlocksSplitSuccessResult | BlocksSplitFailureResult;
-export interface BlocksMergeInput {
-  /** First paragraph; receives the merged content. */
-  first: BlockNodeAddress;
-  /** Paragraph immediately after `first` in the same story. */
-  second: BlockNodeAddress;
-}
-export interface BlocksMergeSuccessResult {
-  success: true;
-  /** Address of the paragraph that was removed (the second paragraph). */
-  removed: BlockNodeAddress;
-  trackedChangeRefs?: ReceiptInsert[];
-  remappedRefs?: AffectedRefRemapping[];
-  affectedStories?: StoryLocator[];
-  textRangeShifts?: TextRangeShift[];
-  txId?: string;
-}
-export interface BlocksMergeFailureResult {
-  success: false;
-  failure: ReceiptFailure;
-}
-export type BlocksMergeResult = BlocksMergeSuccessResult | BlocksMergeFailureResult;
-export interface BlocksMoveInput {
-  /** Paragraph to move. */
-  source: BlockNodeAddress;
-  /** Destination anchor paragraph in the same story. */
-  destination: BlockNodeAddress;
-  /** Whether to place `source` before or after `destination`. */
-  placement: 'before' | 'after';
-}
-export interface BlocksMoveSuccessResult {
-  success: true;
-  /** Same `source` paragraph, now relocated. */
-  moved: BlockNodeAddress;
-  remappedRefs?: AffectedRefRemapping[];
-  affectedStories?: StoryLocator[];
-  /**
-   * Tracked-mode authoring (changeMode: 'tracked') emits paired move review
-   * entities. Each entry addresses the logical pair so callers can route the
-   * resulting review through `trackChanges.list/get/decide`. Direct-mode
-   * moves leave this field undefined.
-   */
-  trackedChangeRefs?: ReceiptInsert[];
-  txId?: string;
-}
-export interface BlocksMoveFailureResult {
-  success: false;
-  failure: ReceiptFailure;
-}
-export type BlocksMoveResult = BlocksMoveSuccessResult | BlocksMoveFailureResult;
 // Re-export Receipt so consumers can reference the union for failure-only
 // shapes without depending on `../types/receipt.js` directly from this file.
 export type { Receipt };

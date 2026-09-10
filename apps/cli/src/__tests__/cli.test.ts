@@ -407,7 +407,7 @@ describe('superdoc CLI', () => {
   });
 
   test('describe command paragraph format ops do not advertise text-range shortcuts', async () => {
-    const result = await runCli(['describe', 'command', 'doc.format.paragraph.setMarkRunProps', '--output', 'pretty']);
+    const result = await runCli(['describe', 'command', 'doc.format.paragraph.setAlignment', '--output', 'pretty']);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('--block-id');
     expect(result.stdout).not.toContain('--start');
@@ -1696,30 +1696,6 @@ describe('superdoc CLI', () => {
     expect(await readDocxPart(footnotesOut, 'word/document.xml')).toContain('footnoteReference');
   });
 
-  test('paragraph mark run props surface CAPABILITY_UNAVAILABLE on the v1 runtime', async () => {
-    const formatSource = join(TEST_DIR, 'paragraph-mark-run-props-source.docx');
-    const formatOut = join(TEST_DIR, 'paragraph-mark-run-props-out.docx');
-    await copyFile(SAMPLE_DOC, formatSource);
-
-    const target = await firstTextRange(['find', formatSource, '--type', 'text', '--pattern', 'Wilde']);
-    const result = await runCli([
-      'format',
-      'paragraph',
-      'set-mark-run-props',
-      formatSource,
-      '--block-id',
-      target.blockId,
-      '--mark-run-props-json',
-      '{"bold":true}',
-      '--out',
-      formatOut,
-    ]);
-
-    expect(result.code).toBe(1);
-    const envelope = parseJsonOutput<ErrorEnvelope>(result);
-    expect(envelope.error.code).toBe('CAPABILITY_UNAVAILABLE');
-  });
-
   test('track-changes list is capability-aware', async () => {
     const result = await runCli(['track-changes', 'list', SAMPLE_DOC]);
     if (result.code === 0) {
@@ -2373,6 +2349,59 @@ describe('superdoc CLI', () => {
     expect(success.code).toBe(0);
 
     const closeResult = await runCli(['close', '--discard']);
+    expect(closeResult.code).toBe(0);
+  });
+
+  test('expected revision protects execute code and preset dispatch', async () => {
+    await runCli(['open', SAMPLE_DOC, '--session', 'llm-guard']);
+
+    const advance = await runCli([
+      'execute',
+      'code',
+      '--session',
+      'llm-guard',
+      '--code',
+      "doc.create.paragraph({ text: 'REVISION_GUARD_BASELINE' }); return 'ok';",
+    ]);
+    expect(advance.code).toBe(0);
+
+    const staleExecute = await runCli([
+      'execute',
+      'code',
+      '--session',
+      'llm-guard',
+      '--expected-revision',
+      '0',
+      '--code',
+      "doc.create.paragraph({ text: 'STALE_EXECUTE_CODE' }); return 'ok';",
+    ]);
+    expect(staleExecute.code).toBe(1);
+    expect(parseJsonOutput<ErrorEnvelope>(staleExecute).error.code).toBe('REVISION_MISMATCH');
+
+    const stalePreset = await runCli([
+      'preset',
+      'dispatch',
+      '--session',
+      'llm-guard',
+      '--preset',
+      'core',
+      '--tool-name',
+      'superdoc_perform_action',
+      '--args-json',
+      JSON.stringify({ action: 'insert_paragraphs', text: 'STALE_PRESET_DISPATCH' }),
+      '--expected-revision',
+      '0',
+    ]);
+    expect(stalePreset.code).toBe(1);
+    expect(parseJsonOutput<ErrorEnvelope>(stalePreset).error.code).toBe('REVISION_MISMATCH');
+
+    const textResult = await runCli(['get-text', '--session', 'llm-guard']);
+    expect(textResult.code).toBe(0);
+    expect(textResult.stdout).toContain('REVISION_GUARD_BASELINE');
+    expect(textResult.stdout).not.toContain('STALE_EXECUTE_CODE');
+    expect(textResult.stdout).not.toContain('STALE_PRESET_DISPATCH');
+
+    const closeResult = await runCli(['close', '--discard', '--session', 'llm-guard']);
     expect(closeResult.code).toBe(0);
   });
 

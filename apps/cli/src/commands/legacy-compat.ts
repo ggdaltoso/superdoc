@@ -373,11 +373,10 @@ export async function tryRunLegacyCompatCommand(
 }
 
 function assertV1Opened(opened: OpenedRuntimeDocument, label: string): OpenedDocument {
-  if (opened.runtime !== 'v1') {
-    throw new CliError('RUNTIME_V2_UNAVAILABLE', `${label}: this command is not available in the v2 runtime.`, {
-      runtime: opened.runtime,
-      command: label,
-    });
+  // This branch is v1-only, so every opened document is editor-backed. Guard
+  // defensively against a runtime-neutral handle that lacks the v1 editor.
+  if (!('editor' in opened)) {
+    throw new CliError('COMMAND_FAILED', `${label}: expected a v1 editor-backed session.`);
   }
   return opened as OpenedDocument;
 }
@@ -632,7 +631,7 @@ async function runLegacyInsertInlineSpecial(
   context: CommandContext,
 ): Promise<CommandExecution> {
   const commandSpec = COMMAND_BY_KIND[kind];
-  const { parsed, help } = parseOperationArgs(commandSpec.operationId, tokens, {
+  const { parsed, args, help } = parseOperationArgs(commandSpec.operationId, tokens, {
     commandName: `insert ${kind === 'tab' ? 'tab' : 'line-break'}`,
   });
 
@@ -656,8 +655,7 @@ async function runLegacyInsertInlineSpecial(
   const { doc } = resolveDocArg(parsed, `insert ${COMMAND_BY_KIND[kind].label}`);
   const outPath = getStringOption(parsed, 'out');
   const force = getBooleanOption(parsed, 'force');
-  const expectedRevisionRaw = parsed.options.expectedRevision;
-  const expectedRevision = typeof expectedRevisionRaw === 'number' ? expectedRevisionRaw : undefined;
+  const expectedRevision = typeof args.expectedRevision === 'number' ? args.expectedRevision : undefined;
   const commandName = kind === 'tab' ? 'insert tab' : 'insert line-break';
   const input = parsed.options as Record<string, unknown>;
 

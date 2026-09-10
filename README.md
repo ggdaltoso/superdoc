@@ -11,16 +11,16 @@
 <div align="center">
   <a href="https://www.npmjs.com/package/superdoc" target="_blank"><img src="https://img.shields.io/npm/v/superdoc.svg?color=1355ff" height="22px"></a>
   <a href="https://www.npmjs.com/package/superdoc" target="_blank"><img src="https://img.shields.io/npm/dm/superdoc.svg?color=1355ff" height="22px"></a>
-  <a href="https://codecov.io/gh/superdoc-dev/superdoc" target="_blank"><img src="https://codecov.io/gh/superdoc-dev/superdoc/branch/main/graph/badge.svg" height="22px"></a>
+  <a href="https://codecov.io/gh/superdoc/docx-editor" target="_blank"><img src="https://codecov.io/gh/superdoc/docx-editor/branch/main/graph/badge.svg" height="22px"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0" target="_blank"><img src="https://img.shields.io/badge/License-AGPL%20v3-1355ff.svg?color=1355ff" height="22px"></a>
-  <a href="https://github.com/superdoc-dev/superdoc" target="_blank"><img src="https://img.shields.io/github/stars/superdoc-dev/superdoc?style=flat&color=1355ff" height="22px"></a>
+  <a href="https://github.com/superdoc/docx-editor" target="_blank"><img src="https://img.shields.io/github/stars/superdoc/docx-editor?style=flat&color=1355ff" height="22px"></a>
   <a href="https://discord.com/invite/b9UuaZRyaB" target="_blank"><img src="https://img.shields.io/badge/discord-join-1355ff" height="22px"></a>
 </div>
 
 <p align="center">
   <strong>The document engine for DOCX files.</strong><br>
   Renders, edits, and automates .docx files in the browser, headless on the server, and within AI agent workflows.<br>
-  Self-hosted. Open source. Works with React, Vue, and vanilla JS.
+  Self-hosted. Open source. Works with React, Vue, Angular, Svelte, and vanilla JS.
 </p>
 
 <div align="center">
@@ -87,7 +87,7 @@ Or use the CDN:
 <script type="module" src="https://unpkg.com/superdoc/dist/superdoc.umd.js"></script>
 ```
 
-For all available options and events, see the [documentation](https://docs.superdoc.dev) or [SuperDoc.js](packages/superdoc/src/core/SuperDoc.js).
+For all available options and events, see the [documentation](https://docs.superdoc.dev) or [SuperDoc.ts](packages/superdoc/src/core/SuperDoc.ts).
 
 ### Using an AI coding agent?
 
@@ -128,11 +128,11 @@ Starter projects to get you running quickly:
 
 ## Roadmap
 
-See the [SuperDoc roadmap](https://github.com/superdoc-dev/superdoc/issues/1982) for what's coming next. DOCX import/export fidelity is always a top priority.
+See the [SuperDoc roadmap](https://github.com/superdoc/docx-editor/issues/1982) for what's coming next. DOCX import/export fidelity is always a top priority.
 
 ## Contributing
 
-Check the [issue tracker](https://github.com/superdoc-dev/superdoc/issues) for open issues, or read the [Contributing Guide](CONTRIBUTING.md) to get started. Bug reports with reproduction .docx files are especially valuable.
+Check the [issue tracker](https://github.com/superdoc/docx-editor/issues) for open issues, or read the [Contributing Guide](CONTRIBUTING.md) to get started. Bug reports with reproduction .docx files are especially valuable.
 
 ## Community
 
@@ -142,7 +142,7 @@ Check the [issue tracker](https://github.com/superdoc-dev/superdoc/issues) for o
 ## License
 
 - Open source: [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.html)
-- Commercial: [Enterprise License](https://www.superdocportal.dev/get-in-touch)
+- Commercial: [SuperDoc Commercial License](https://www.superdocportal.dev/superdoc-terms-of-service)
 
 ## Acknowledgments
 
@@ -186,6 +186,8 @@ Special thanks to these community members who have contributed code to SuperDoc:
 <a href="https://github.com/wookieb"><img src="https://github.com/wookieb.png" width="50" height="50" alt="wookieb" title="Łukasz Kużyński" /></a>
 <a href="https://github.com/xy200303"><img src="https://github.com/xy200303.png" width="50" height="50" alt="xy200303" title="小云" /></a>
 <a href="https://github.com/garhm"><img src="https://github.com/garhm.png" width="50" height="50" alt="garhm" title="Yaroslav Zakharov" /></a>
+<a href="https://github.com/MIt9"><img src="https://github.com/MIt9.png" width="50" height="50" alt="MIt9" title="Dmitro Bilukha" /></a>
+<a href="https://github.com/malizhev"><img src="https://github.com/malizhev.png" width="50" height="50" alt="malizhev" title="Bogdan Malizhev" /></a>
 
 Want to see your avatar here? Check the [Contributing Guide](CONTRIBUTING.md) to get started.
 

@@ -1,16 +1,16 @@
 {
   "name": "superdoc",
   "type": "module",
-  "version": "1.42.0",
+  "version": "1.46.2",
   "license": "AGPL-3.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/superdoc-dev/superdoc.git",
+    "url": "git+https://github.com/superdoc/docx-editor.git",
     "directory": "packages/superdoc"
   },
   "homepage": "https://www.superdoc.dev/",
   "bugs": {
-    "url": "https://github.com/superdoc-dev/superdoc/issues"
+    "url": "https://github.com/superdoc/docx-editor/issues"
   },
   "readme": "../../README.md",
   "files": [
@@ -115,9 +115,10 @@
   "main": "./dist/superdoc.cjs",
   "module": "./dist/superdoc.es.js",
   "scripts": {
-    "dev": "vite",
-    "dev:collab": "concurrently -k -n VITE,COLLAB -c cyan,green \"vite\" \"pnpm run collab-server\"",
+    "dev": "concurrently -k -n VITE,WORD -c cyan,magenta \"vite\" \"node ../../devtools/word-benchmark-sidecar/server.js --stay-alive-on-reuse\"",
+    "dev:collab": "concurrently -k -n VITE,COLLAB,WORD -c cyan,green,magenta \"vite\" \"pnpm run collab-server\" \"node ../../devtools/word-benchmark-sidecar/server.js --stay-alive-on-reuse\"",
     "collab-server": "pnpm --filter @superdoc-dev/superdoc-yjs-collaboration build && tsx src/dev/collab-server.ts",
+    "word-benchmark-sidecar": "node ../../devtools/word-benchmark-sidecar/server.js",
     "build": "vite build && pnpm run build:cdn && pnpm run postbuild",
     "build:dev": "SUPERDOC_SKIP_DTS=1 vite build",
     "postbuild": "node ./scripts/check-tsconfig-type-surface.cjs && node ./scripts/ensure-types.cjs && node ./scripts/audit-bundle.cjs && node ./scripts/audit-declarations.cjs && node ./scripts/check-export-coverage.cjs && node ./scripts/verify-public-facade-emit.cjs && node ./scripts/report-declaration-reachability.cjs",
@@ -144,7 +145,6 @@
     "jsdom": "catalog:",
     "konva": "catalog:",
     "pinia": "catalog:",
-    "rollup-plugin-copy": "catalog:",
     "uuid": "catalog:",
     "vue": "^3.5.0",
     "y-websocket": "catalog:"
@@ -204,6 +204,7 @@
     "postcss-prefixwrap": "catalog:",
     "prosemirror-model": "catalog:",
     "prosemirror-state": "catalog:",
+    "rollup-plugin-copy": "catalog:",
     "rollup-plugin-visualizer": "catalog:",
     "sirv": "catalog:",
     "tsx": "catalog:",
